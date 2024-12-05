@@ -20,7 +20,6 @@ public class ImageMeanFilter {
         numThreads = Integer.parseInt(args[1]);
 
         try {
-            // Load image
             originalImage = ImageIO.read(new File(inputFile));
             filteredImage = new BufferedImage(
                 originalImage.getWidth(),
@@ -30,22 +29,17 @@ public class ImageMeanFilter {
 
             int height = originalImage.getHeight();
 
-            // Create thread array
             Thread[] workers = new Thread[numThreads];
 
-            // Assign each thread to process a portion of rows
             for (int i = 0; i < numThreads; i++) {
-                final int threadId = i;
-                workers[i] = new Thread(() -> processRows(threadId, height));
+                workers[i] = new Thread(new RowProcessor(i));
                 workers[i].start();
             }
 
-            // Wait for all threads to finish
             for (Thread worker : workers) {
                 worker.join();
             }
 
-            // Save processed image
             ImageIO.write(filteredImage, "jpg", new File("filtered_output.jpg"));
             System.out.println("Image successfully processed and saved as filtered_output.jpg");
 
@@ -54,16 +48,26 @@ public class ImageMeanFilter {
         }
     }
 
-    private static void processRows(int threadId, int height) {
-        int width = originalImage.getWidth();
-        
-        // Each thread processes every `numThreads`-th row (striping approach)
-        for (int y = threadId; y < height; y += numThreads) {
-            for (int x = 0; x < width; x++) {
-                int[] avgColor = calculateNeighborhoodAverage(originalImage, x, y, kernelSize);
+    static class RowProcessor implements Runnable {
+        private int threadId;
 
-                // Writing directly, as each thread processes a unique row (no race condition)
-                filteredImage.setRGB(x, y, (avgColor[0] << 16) | (avgColor[1] << 8) | avgColor[2]);
+        public RowProcessor(int threadId) {
+            this.threadId = threadId;
+        }
+
+        @Override
+        public void run() {
+            int width = originalImage.getWidth();
+            int height = originalImage.getHeight();
+
+            for (int y = threadId; y < height; y += numThreads) {
+                for (int x = 0; x < width; x++) {
+                    int[] avgColor = calculateNeighborhoodAverage(originalImage, x, y, kernelSize);
+
+                    synchronized (filteredImage) { // Ensure thread safety
+                        filteredImage.setRGB(x, y, (avgColor[0] << 16) | (avgColor[1] << 8) | avgColor[2]);
+                    }
+                }
             }
         }
     }
